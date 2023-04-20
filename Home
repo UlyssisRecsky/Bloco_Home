@@ -1,0 +1,110 @@
+(* Change from V1.5 to V1.6
+We include a jog procedure to take place when the home switch is ON and try to home again.
+On V1.5 once you home and then try to home again, servo will search for the 
+home switch rising edge even if it is already at home. Inserting this Jog procedure,
+if the servo is at home position (home switch ON), servo will get out the home position
+at the reversed home direction and once it sees the home switch falling edge, it will
+continue with the regualr home process.
+*)
+
+(*HOME SWITCH*)
+	Home_Switch:=X4;
+	Axis_0_to_3:=0;
+	
+IF Axis_0_to_3=0 THEN
+	IF DF(Start) AND NOT Operation AND NOT R911C AND NOT Home_Switch THEN 
+		Operation:=TRUE;
+		Done:=FALSE;
+	END_IF;
+	IF DF(Start) AND NOT Operation AND NOT R911C AND Home_Switch THEN 
+		Jog_Process:=TRUE;
+		Done:=FALSE;
+
+	END_IF;
+
+	IF (E_Stop)  AND (Operation or Jog_Process) THEN
+		DT90052:=16#108;
+		DT90052:=16#100;
+		Operation:=FALSE;
+		Jog_Process:=False;
+		Done:=FALSE;
+	END_IF;
+END_IF;
+
+
+	
+(*JOG PROCESS*)
+If Jog_Process THEN
+	If (Direction) Then
+		Jog_Control[0]:=16#0112;
+	Else
+		Jog_Control[0]:=16#0113;
+	End_If;
+	Jog_Control[1]:=Low_Speed;
+	
+		If (Axis_0_to_3=0) Then
+		F172_PLSH(s_Start := Jog_Control[0], n_Channel := 0);	
+		End_If;
+End_if;
+
+(*Set a timer to allow normal Operation after jog*)
+	IF (Jog_Process)AND DFN(Home_Switch) THEN
+		Jog_Process_timer:=True;
+		Jog_Process:=False;
+		
+		END_IF;
+
+IF DF(Operation) or DF(Time_jog.T) Then
+	Jog_Process_timer:=False;
+	Operation:=True;
+	IF Deviation_Counter THEN
+		Position_Table[0]:= 0;
+	ELSE
+		Position_Table[0]:=0;
+	END_IF;
+	IF Low_Speed>High_Speed THEN
+		Position_Table[1]:=High_Speed;
+	ELSE
+		Position_Table[1]:=Low_Speed;
+	END_IF;
+	Position_Table[2]:=High_Speed;
+	Position_Table[3]:=Accel_Time_ms;
+	Position_Table[4]:=10;
+	IF Direction THEN           (* In this FB, Step & Direction only.  No CW/CCW mode. Type I home return*)
+		Position_Table[0]:= Position_Table[0] + 16#123;
+	ELSE
+		Position_Table[0]:= Position_Table[0] + 16#122;
+	END_IF;
+	IF Axis_0_to_3=0 THEN
+		F171_SPDH(s_Start := Position_Table[0], n_Channel := 0);
+	END_IF;
+END_IF;
+
+Time_jog(start := Jog_Process_timer, SV := 10);
+
+
+IF DF(Near_Home) AND Operation AND Axis_0_to_3=0 THEN
+	          (* In this FB, Step & Direction only.  No CW/CCW mode. Type I home return*)
+		DT90052:=16#110;
+		DT90052:=16#100;
+	
+END_IF;
+
+IF Axis_0_to_3=0 THEN 
+	IF DFN(R911C)THEN 
+		 Operation:=FALSE;
+		 Jog_Process:=False;
+	END_IF; 
+END_IF; 
+ 
+
+IF DFN(Operation) AND NOT DF(E_Stop) THEN Done:=TRUE; END_IF;
+
+IF Axis_0_to_3=0 THEN
+	IF R911C AND NOT Operation and NOT Jog_Process THEN
+		Done:=FALSE;
+	END_IF;
+END_IF;
+
+
+Running:=Operation or Jog_Process;
